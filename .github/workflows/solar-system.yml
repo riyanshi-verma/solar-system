@@ -26,6 +26,17 @@ jobs:
     
         - name: Install Dependencies
           run: npm install
+
+        - name: Check MongoDB variables
+          run: |
+            echo "MONGO_URI=$MONGO_URI"
+            echo "MONGO_USERNAME=$MONGO_USERNAME"
+            if [ -n "$MONGO_PASSWORD" ]; then
+              echo "MONGO_PASSWORD is available"
+            else
+              echo "MONGO_PASSWORD is NOT available"
+            fi
+          
     
         - name: Unit Testing
           run: npm test
