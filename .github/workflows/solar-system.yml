@@ -37,6 +37,11 @@ jobs:
               echo "MONGO_PASSWORD is NOT available"
             fi
           
+        - name: Check MongoDB credentials
+          run: |
+            echo "MONGO_URI=$MONGO_URI"
+            echo "MONGO_USERNAME=$MONGO_USERNAME"
+            echo "MONGO_PASSWORD length=${#MONGO_PASSWORD}"
     
         - name: Unit Testing
           run: npm test
