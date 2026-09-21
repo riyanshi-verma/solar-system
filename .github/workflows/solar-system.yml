@@ -29,21 +29,35 @@ jobs:
       - name: Install Dependencies
         run: npm install
 
-      - name: Check MongoDB variables
+      - name: Check MongoDB Variables
         run: |
           echo "MONGO_URI=$MONGO_URI"
           echo "MONGO_USERNAME=$MONGO_USERNAME"
+
           if [ -n "$MONGO_PASSWORD" ]; then
             echo "MONGO_PASSWORD is available"
           else
             echo "MONGO_PASSWORD is NOT available"
+            exit 1
           fi
 
-      - name: Check MongoDB credentials
+      - name: Verify MongoDB Password
         run: |
-          echo "MONGO_URI=$MONGO_URI"
-          echo "MONGO_USERNAME=$MONGO_USERNAME"
-          echo "MONGO_PASSWORD length=${#MONGO_PASSWORD}"
+          node -e "
+          const expected = 'SuperPassword';
+          const actual = process.env.MONGO_PASSWORD;
+
+          console.log('Expected password length:', expected.length);
+          console.log('Actual password length:', actual.length);
+          console.log('Exact password match:', actual === expected);
+
+          if (actual !== expected) {
+            console.log('Password does NOT exactly match the expected value.');
+            process.exit(1);
+          }
+
+          console.log('Password exactly matches the expected value.');
+          "
 
       - name: Test MongoDB Connection
         run: |
@@ -58,6 +72,9 @@ jobs:
           })
           .then(() => {
             console.log('MongoDB authentication SUCCESS');
+            return mongoose.connection.close();
+          })
+          .then(() => {
             process.exit(0);
           })
           .catch(err => {
