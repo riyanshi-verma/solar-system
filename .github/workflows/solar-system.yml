@@ -18,10 +18,11 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Setup NodeJS Version
+      - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 20
@@ -41,7 +42,7 @@ jobs:
             exit 1
           fi
 
-      - name: Verify MongoDB Password
+      - name: Check MongoDB Password
         run: |
           node -e "
           const expected = 'SuperPassword';
@@ -52,11 +53,11 @@ jobs:
           console.log('Exact password match:', actual === expected);
 
           if (actual !== expected) {
-            console.log('Password does NOT exactly match the expected value.');
+            console.log('Password does NOT match.');
             process.exit(1);
           }
 
-          console.log('Password exactly matches the expected value.');
+          console.log('Password exactly matches.');
           "
 
       - name: Test MongoDB Connection
@@ -64,55 +65,7 @@ jobs:
           node -e "
           const mongoose = require('mongoose');
 
-          mongoose.connect(process.env.MONGO_URI, {
-            user: process.env.MONGO_USERNAME,
-            pass: process.env.MONGO_PASSWORD,
-            useNewUrlParser: true,
-            useUnifiedTopology: true
-          })
-          .then(() => {
-            console.log(name: MongoDB Connection Test
-
-on:
-  workflow_dispatch:
-  push:
-    branches:
-      - main
-      - 'feature/*'
-
-env:
-  MONGO_URI: 'mongodb+srv://supercluster.d83jj.mongodb.net/superData'
-  MONGO_USERNAME: ${{ vars.MONGO_USERNAME }}
-  MONGO_PASSWORD: ${{ secrets.MONGO_PASSWORD }}
-
-jobs:
-  test-mongodb:
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-
-      - name: Install Dependencies
-        run: npm install
-
-      - name: Verify Variables
-        run: |
-          echo "MONGO_URI=$MONGO_URI"
-          echo "MONGO_USERNAME=$MONGO_USERNAME"
-          echo "PASSWORD LENGTH=${#MONGO_PASSWORD}"
-
-      - name: Test MongoDB Connection
-        run: |
-          node <<'EOF'
-          const mongoose = require("mongoose");
-
-          console.log("Starting MongoDB connection test...");
+          console.log('Starting MongoDB connection test...');
 
           mongoose.connect(process.env.MONGO_URI, {
             user: process.env.MONGO_USERNAME,
@@ -121,22 +74,14 @@ jobs:
             useUnifiedTopology: true
           })
           .then(() => {
-            console.log("MongoDB Connection Successful");
-            process.exit(0);
-          })
-          .catch((err) => {
-            console.log("MongoDB Connection Failed");
-            console.log(err.message);
-            process.exit(1);
-          });
-          EOF'MongoDB authentication SUCCESS');
+            console.log('MongoDB Connection Successful');
             return mongoose.connection.close();
           })
           .then(() => {
             process.exit(0);
           })
           .catch(err => {
-            console.log('MongoDB authentication FAILED');
+            console.log('MongoDB Connection Failed');
             console.log(err.message);
             process.exit(1);
           });
