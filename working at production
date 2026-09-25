@@ -1,0 +1,372 @@
+Yes. Now that we have all three files, we can connect the whole picture. The key thing to understand is that these YAML files are not three independent things — they form one chain:
+
+Deployment → Pods ← Service ← Ingress
+
+But when kubectl apply processes the folder, the important part is how the resources eventually connect, not necessarily which YAML file Kubernetes "creates first."
+
+Let's use your production namespace as the example.
+
+1. Starting point
+
+You have:
+
+kubernetes/production/
+├── deployment.yaml
+├── service.yaml
+└── ingress.yaml
+
+And your workflow eventually runs:
+
+kubectl apply -f kubernetes/production
+
+Before this, your production namespace already exists:
+
+production
+
+And your NGINX Ingress Controller is already running in:
+
+ingress-nginx
+2. Deployment is created
+
+Your deployment.yaml says:
+
+kind: Deployment
+metadata:
+  name: solar-system
+  namespace: production
+
+Kubernetes creates:
+
+production
+└── Deployment: solar-system
+
+But the Deployment itself doesn't run your application.
+
+Its job is to create and manage Pods.
+
+Your Deployment says:
+
+replicas: 3
+
+for example.
+
+So the Deployment creates:
+
+Deployment: solar-system
+        │
+        ├── Pod 1
+        ├── Pod 2
+        └── Pod 3
+3. Deployment creates Pods
+
+Inside your Deployment you have:
+
+template:
+  metadata:
+    labels:
+      app: solar-system
+
+Therefore every Pod created by this Deployment gets:
+
+app=solar-system
+
+So:
+
+Deployment
+    │
+    ├── Pod 1
+    │     └── app=solar-system
+    │
+    ├── Pod 2
+    │     └── app=solar-system
+    │
+    └── Pod 3
+          └── app=solar-system
+
+And your container runs:
+
+containerPort: 3000
+
+So your Node.js application is listening on port 3000 inside each Pod.
+
+4. Now the Service is created
+
+Your service.yaml says:
+
+kind: Service
+metadata:
+  name: solar-system
+  namespace: production
+
+Kubernetes creates:
+
+production
+├── Deployment: solar-system
+├── Pods
+└── Service: solar-system
+
+But how does the Service know which Pods belong to it?
+
+This is the important connection.
+
+Your Service has:
+
+selector:
+  app: solar-system
+
+And your Pods have:
+
+labels:
+  app: solar-system
+
+Therefore:
+
+Service selector
+      ↓
+app=solar-system
+      ↓
+finds matching Pods
+
+So the Service automatically discovers:
+
+Service: solar-system
+       │
+       ├── Pod 1
+       ├── Pod 2
+       └── Pod 3
+5. Service forwards traffic to port 3000
+
+Your Service has:
+
+ports:
+- port: 3000
+  targetPort: 3000
+
+This means:
+
+Service port 3000
+       ↓
+Pod targetPort 3000
+
+So when the Service receives traffic on port 3000, it forwards it to the application running on port 3000 inside one of the matching Pods.
+
+6. Now the Ingress is created
+
+Your ingress.yaml creates:
+
+production
+├── Deployment: solar-system
+├── Service: solar-system
+└── Ingress: solar-system
+
+Your Ingress contains something like:
+
+backend:
+  service:
+    name: solar-system
+    port:
+      number: 3000
+
+This creates the next connection:
+
+Ingress
+   ↓
+Service: solar-system
+
+So now the whole application chain is connected.
+
+7. What happens when a user opens the application?
+
+Suppose your final URL is:
+
+https://solar-system-production.192.168.49.2.nip.io
+
+The request goes:
+
+                    INTERNET
+                       │
+                       ▼
+             NGINX Ingress Controller
+                 ingress-nginx
+                       │
+                       ▼
+              Ingress: solar-system
+                 production
+                       │
+                       ▼
+              Service: solar-system
+                 port 3000
+                       │
+              ┌────────┼────────┐
+              ▼        ▼        ▼
+            Pod 1    Pod 2    Pod 3
+              │        │        │
+              └────────┼────────┘
+                       ▼
+                 Node.js :3000
+
+That's the complete traffic path.
+
+8. Where does the Ingress IP fit?
+
+Remember your workflow obtains:
+
+kubectl -n ingress-nginx get svc ingress-nginx-controller
+
+Suppose the IP is:
+
+192.168.49.2
+
+Your workflow puts that into the Ingress manifest.
+
+The hostname becomes:
+
+solar-system-production.192.168.49.2.nip.io
+
+Now when the browser requests that hostname:
+
+solar-system-production.192.168.49.2.nip.io
+
+the request reaches:
+
+192.168.49.2
+      ↓
+NGINX Ingress Controller
+
+NGINX looks at the hostname and finds the matching Ingress rule:
+
+solar-system-production...
+        ↓
+production/solar-system Service
+9. The complete relationship
+
+This is the most important diagram to remember:
+
+                         PRODUCTION NAMESPACE
+┌──────────────────────────────────────────────────────────────┐
+│                                                              │
+│   Deployment                                                  │
+│   solar-system                                                │
+│       │                                                      │
+│       │ creates/manages                                       │
+│       ▼                                                      │
+│   ┌─────────┐   ┌─────────┐   ┌─────────┐                  │
+│   │  Pod 1  │   │  Pod 2  │   │  Pod 3  │                  │
+│   │app=solar│   │app=solar│   │app=solar│                  │
+│   │ :3000   │   │ :3000   │   │ :3000   │                  │
+│   └────┬────┘   └────┬────┘   └────┬────┘                  │
+│        ▲              ▲              ▲                       │
+│        │              │              │                       │
+│        └──────────────┼──────────────┘                       │
+│                       │                                       │
+│                  Service                                      │
+│                solar-system                                  │
+│                   :3000                                      │
+│                       ▲                                       │
+│                       │                                       │
+│                   Ingress                                    │
+│                solar-system                                 │
+│                       ▲                                       │
+└───────────────────────┼──────────────────────────────────────┘
+                        │
+                        │
+               NGINX Ingress Controller
+                  ingress-nginx
+                        │
+                        ▼
+                   Internet
+10. One very important correction
+
+Don't think:
+
+"Deployment creates first, then Service, then Ingress."
+
+That's not something you should depend on.
+
+When you run:
+
+kubectl apply -f kubernetes/production
+
+Kubernetes processes the manifests and creates/updates the resources.
+
+The relationships are established through names, labels, selectors, and references:
+
+Deployment
+    │
+    │ creates Pods
+    ▼
+Pods
+    │
+    │ labels: app=solar-system
+    ▲
+    │ selector
+Service
+    │
+    │ backend reference
+    ▼
+Ingress
+
+So even though the resources are logically connected, Kubernetes doesn't require you to manually create them one-by-one.
+
+11. What your workflow is actually doing
+
+Your production workflow roughly performs:
+
+1. Get Ingress Controller IP
+          ↓
+2. Replace variables in YAML
+          ↓
+3. Create MongoDB Secret
+          ↓
+4. kubectl apply -f kubernetes/production
+          ↓
+       ┌──┴───────────────┐
+       ▼                  ▼
+ Deployment             Service
+       │                  │
+       ▼                  │
+     Pods ◄───────────────┘
+       ▲
+       │
+     Ingress
+       ▲
+       │
+NGINX Ingress Controller
+
+And your MongoDB connection is a separate connection:
+
+Pod
+ │
+ │ envFrom
+ ▼
+mongo-db-creds Secret
+ │
+ ▼
+MongoDB Server
+
+So your application has two important infrastructure relationships:
+
+Incoming traffic:
+
+Internet
+   ↓
+Ingress Controller
+   ↓
+Ingress
+   ↓
+Service
+   ↓
+Pod
+
+
+Database:
+
+Pod
+   ↓
+Environment variables
+   ↓
+Kubernetes Secret
+   ↓
+MongoDB
+
+That's the architecture you are building.
